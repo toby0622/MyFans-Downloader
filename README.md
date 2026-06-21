@@ -4,6 +4,7 @@ A powerful, multi-threaded batch downloader for Myfans.jp with a stunning, Swiss
 
 ## Features
 - 🚀 **Blazing Fast**: Multi-threaded concurrent downloading for m3u8 video segments and image batches.
+- 🎬 **Auto FFmpeg Setup**: Automatically downloads and configures FFmpeg on first run, meaning no manual setup is required.
 - 🎨 **Premium Brutalist Web GUI**: A visually striking dark-mode interface built with CSS Grid and modern design principles.
 - 📊 **Real-time Queue & Progress**: Monitor fetch progress and individual file segment downloads dynamically.
 - ⏹️ **Safe Interruption**: A global cancellation mechanism that lets you hit "STOP" at any time to gracefully halt all backend threads.
@@ -20,7 +21,8 @@ MyfansDownloader/
 ├── scripts/                 # Core backend logic
 │   ├── myfans_dl.py         # Primary download engine
 │   ├── download_state.py    # Download state manager for UI syncing
-│   └── filename_utils.py    # Path sanitation and processing
+│   ├── filename_utils.py    # Path sanitation and processing
+│   └── ffmpeg_downloader.py # Auto FFmpeg setup script
 ├── static/                  # Static web assets
 │   └── css/style.css        # Brutalist theme styles
 └── templates/               # Flask HTML templates
@@ -36,11 +38,11 @@ MyfansDownloader/
    ```
 
 2. **Install dependencies:**
-   Make sure you have Python 3.8+ and `ffmpeg` installed.
+   Make sure you have Python 3.8+ installed.
    ```bash
    pip install -r requirements.txt
    ```
-   *(Note: FFmpeg must be in your system PATH to process m3u8 video segments).*
+   *(Note: The application will automatically download and set up FFmpeg on its first run, so no manual installation is required).*
 
 ## Usage
 
@@ -54,7 +56,8 @@ MyfansDownloader/
    Open your browser and navigate to `http://127.0.0.1:5000`
 
 3. **Configure Settings:**
-   Click the **SETTINGS** button in the top right corner. Enter your `Auth Token` (obtained from your browser's network tab when logged into myfans.jp). 
+   Click the **SETTINGS** button in the top right corner. Enter your `Auth Token`.
+   *How to get your Auth Token: Log into myfans.jp, press `F12` to open Developer Tools, go to the **Network** tab, and click on any API request. Look for the `Authorization` header in the request headers, and copy the value that comes after `Token token=`.*
 
 4. **Start Downloading:**
    - Enter the creator's **Username**.
