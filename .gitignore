@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Application Specific
+config.ini
+config/download_state.json
+*.log
+downloads/
+
