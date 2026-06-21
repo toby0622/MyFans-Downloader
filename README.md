@@ -10,6 +10,8 @@ A powerful, multi-threaded batch downloader for Myfans.jp with a stunning, Swiss
 - ⏹️ **Safe Interruption**: A global cancellation mechanism that lets you hit "STOP" at any time to gracefully halt all backend threads.
 - 🔐 **Token Integration**: Automatically manages API tokens directly via the settings UI.
 
+<img width="3416" height="1694" alt="image" src="https://github.com/user-attachments/assets/cf8415f3-7edb-4285-adb0-4e807b5cff19" />
+
 ## File Structure
 ```
 MyfansDownloader/
