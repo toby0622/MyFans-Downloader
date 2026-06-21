@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="page-title">DOWNLOAD MANAGER</h2>
+<div class="page-subtitle">CONTENT ACQUISITION INTERFACE</div>
+<div class="content-layout">
+    <div class="content-left">
+        <form id="downloadForm">
+    <div class="form-grid">
+        <div class="form-column">
+            <div class="form-group">
+                <label for="type" class="form-label">Content Type</label>
+                <select id="type" class="form-select" onchange="updateFormOptions()">
+                    <option value="videos">Videos</option>
+                    <option value="images">Images</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="downloadType" class="form-label">Download Mode</label>
+                <select id="downloadType" class="form-select" onchange="toggleInputs()">
+                    <option value="bulk">Download All Content</option>
+                    <option value="single">Download Single Item</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-column" id="bulkDownload">
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username" placeholder="Enter username (without @)" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="download_type" class="form-label">Content Filter</label>
+                <select id="download_type" class="form-select">
+                    <option value="all">All Posts</option>
+                    <option value="free">Free Posts Only</option>
+                    <option value="subscribed">Subscribed Posts Only</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="resolution" class="form-label">Video Quality</label>
+                <select id="resolution" name="resolution" class="form-select">
+                    <option value="best">Best Available</option>
+                    <option value="uhd">2160p (4K)</option>
+                    <option value="fhd">1080p (Full HD)</option>
+                    <option value="hd">720p (HD)</option>
+                    <option value="sd">480p (SD)</option>
+                    <option value="ld">360p (Low)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-column hidden" id="singleDownload">
+            <div class="form-group">
+                <label for="postId" class="form-label">Post ID</label>
+                <input type="text" class="form-control" id="postId" placeholder="Enter post ID">
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 1rem;">
+        <button type="submit" id="downloadBtn" class="btn btn-primary" style="flex: 1;">DOWNLOAD</button>
+        <button type="button" id="stopBtn" class="btn btn-primary" style="flex: 0 0 150px; background: #ff3333; border-color: #ff3333;" onclick="stopDownload()">STOP</button>
+    </div>
+</form>
+
+        <div id="progress" class="progress-log"></div>
+    </div>
+    
+    <div class="content-right">
+        <!-- Fetch Progress Section -->
+        <div id="fetchSection" style="margin-bottom: 2rem;">
+            <div class="queue-title">FETCH PROGRESS</div>
+            <div id="fetchProgressList" class="queue-list" style="max-height: 200px;">
+                <!-- Fetch items rendered here -->
+            </div>
+        </div>
+
+        <!-- Active Queue Section -->
+        <div style="margin-top: auto; display: flex; flex-direction: column; flex: 1; min-height: 0;">
+            <div class="queue-title">ACTIVE QUEUE</div>
+            <div id="queueList" class="queue-list" style="flex: 1;">
+                <!-- Queue items will be rendered here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function updateFormOptions() {
+        const contentType = document.getElementById('type').value;
+        const downloadTypeSelect = document.getElementById('downloadType');
+        const bulkOptionText = contentType === 'videos' ? 'Download All Videos' : 'Download All Images';
+        const singleOptionText = contentType === 'videos' ? 'Download Single Video' : 'Download Single Image';
+        
+        downloadTypeSelect.options[0].text = bulkOptionText;
+        downloadTypeSelect.options[1].text = singleOptionText;
+        
+        // Hide/show resolution based on content type
+        const resGroup = document.getElementById('resolution').closest('.form-group');
+        if(contentType === 'images') {
+            resGroup.style.display = 'none';
+        } else {
+            resGroup.style.display = 'flex';
+        }
+    }
+
+    function toggleInputs() {
+        const downloadType = document.getElementById('downloadType').value;
+        document.getElementById('bulkDownload').classList.toggle('hidden', downloadType === 'single');
+        document.getElementById('singleDownload').classList.toggle('hidden', downloadType === 'bulk');
+        
+        // Handle required attributes based on visibility
+        if (downloadType === 'bulk') {
+            document.getElementById('username').setAttribute('required', 'required');
+            document.getElementById('postId').removeAttribute('required');
+        } else {
+            document.getElementById('username').removeAttribute('required');
+            document.getElementById('postId').setAttribute('required', 'required');
+        }
+    }
+
+    async function stopDownload() {
+        const progress = document.getElementById('progress');
+        progress.innerHTML += '<span class="log-info" style="color: #ff3333;">Sending stop signal to backend...</span><br>';
+        progress.scrollTop = progress.scrollHeight;
+        try {
+            await fetch('/stop', { method: 'POST' });
+        } catch(e) {
+            console.error('Stop request failed', e);
+        }
+    }
+
+    document.getElementById('downloadForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const progress = document.getElementById('progress');
+        progress.innerHTML = '<span class="log-info">Initializing download process...</span><br>';
+        
+        const downloadType = document.getElementById('downloadType').value;
+        const data = downloadType === 'bulk' ? {
+            username: document.getElementById('username').value,
+            type: document.getElementById('type').value,
+            download_type: document.getElementById('download_type').value,
+            resolution: document.getElementById('resolution').value
+        } : {
+            post_id: document.getElementById('postId').value,
+            type: document.getElementById('type').value,
+            download_type: 'single',
+            resolution: document.getElementById('resolution').value
+        };
+        
+        const response = await fetch('/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const events = new EventSource('/progress');
+        events.onmessage = (event) => {
+            const timestamp = new Date().toLocaleTimeString();
+            progress.innerHTML += `[<span class="log-timestamp">${timestamp}</span>] ${event.data}<br>`;
+            progress.scrollTop = progress.scrollHeight;
+            if (event.data === "DONE") {
+                events.close();
+            }
+        };
+    };
+
+    function renderQueue(statusData) {
+        const queueList = document.getElementById('queueList');
+        const fetchSection = document.getElementById('fetchSection');
+        const fetchProgressList = document.getElementById('fetchProgressList');
+        
+        let hasDownloads = false;
+        let hasFetching = false;
+        
+        const standbyCardHtml = `
+            <div class="queue-item" style="opacity: 0.5;">
+                <div class="queue-id">SYSTEM</div>
+                <div class="queue-status">STANDBY</div>
+                <div class="queue-progress-bar" style="background: transparent;">
+                </div>
+            </div>`;
+
+        if (!statusData.downloads || Object.keys(statusData.downloads).length === 0) {
+            queueList.innerHTML = standbyCardHtml;
+            fetchProgressList.innerHTML = standbyCardHtml;
+            return;
+        }
+
+        let downloadHtml = '';
+        let fetchHtml = '';
+        
+        Object.entries(statusData.downloads).forEach(([post_id, info]) => {
+            let percentage = 0;
+            let progressText = '';
+            
+            if (info.status === 'fetching') {
+                hasFetching = true;
+                progressText = info.segments_downloaded > 0 ? `[Page ${info.segments_downloaded}]` : '';
+                fetchHtml += `
+                <div class="queue-item">
+                    <div class="queue-id">SYSTEM</div>
+                    <div class="queue-status">FETCHING POSTS ${progressText}</div>
+                    <div class="queue-progress-bar">
+                        <div class="queue-progress-fill fetching-animation"></div>
+                    </div>
+                </div>`;
+                return; // skip the rest for fetching status
+            }
+            
+            hasDownloads = true;
+            if (info.segments_total > 0) {
+                percentage = Math.round((info.segments_downloaded / info.segments_total) * 100);
+                progressText = `[${info.segments_downloaded}/${info.segments_total}] ${percentage}%`;
+            } else if (info.status === 'completed') {
+                percentage = 100;
+            }
+
+            downloadHtml += `
+            <div class="queue-item">
+                <div class="queue-id">POST #${post_id}</div>
+                <div class="queue-status">${info.status.toUpperCase()} ${progressText}</div>
+                <div class="queue-progress-bar">
+                    <div class="queue-progress-fill" style="width: ${percentage}%"></div>
+                </div>
+            </div>`;
+        });
+        
+        if (hasFetching) {
+            fetchProgressList.innerHTML = fetchHtml;
+        } else {
+            fetchProgressList.innerHTML = standbyCardHtml;
+        }
+
+        queueList.innerHTML = hasDownloads ? downloadHtml : standbyCardHtml;
+    }
+
+    async function pollStatus() {
+        try {
+            const response = await fetch('/status');
+            const status = await response.json();
+            renderQueue(status);
+        } catch(e) {
+            console.error('Status fetch failed', e);
+        }
+    }
+
+    // Initialize form options on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateFormOptions();
+        toggleInputs();
+        pollStatus();
+        setInterval(pollStatus, 2000); // Poll every 2 seconds
+    });
+</script>
+{% endblock %}

@@ -223,3 +223,5 @@ config/download_state.json
 *.log
 downloads/
 
+# FFmpeg
+ffmpeg/

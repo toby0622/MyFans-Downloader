@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="page-title">SYSTEM SETTINGS</h2>
+<div class="page-subtitle">CONFIGURATION INTERFACE</div>
+<form id="settingsForm">
+    <div class="form-grid">
+        <div class="form-group">
+            <label for="filename_pattern" class="form-label">Filename Pattern</label>
+            <input type="text" class="form-control" id="filename_pattern" 
+                    placeholder="e.g. {creator}_{date}_{title}">
+            <div class="form-text">Available variables: {creator}, {date}, {title}, {id}</div>
+        </div>
+        
+        <div class="form-group">
+            <label for="auth_token" class="form-label">Auth Token</label>
+            <input type="password" class="form-control" id="auth_token" placeholder="Enter your myfans token">
+        </div>
+        
+        <div class="form-group">
+            <label for="filename_separator" class="form-label">Filename Separator</label>
+            <input type="text" class="form-control" id="filename_separator" 
+                    placeholder="_">
+        </div>
+        
+        <div class="form-group">
+            <label for="write_metadata" class="form-label">Write JSON Metadata</label>
+            <select class="form-select" id="write_metadata">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="output_dir" class="form-label">Download Directory</label>
+            <input type="text" class="form-control" id="output_dir" 
+                    placeholder="./downloads">
+        </div>
+        
+        <div class="form-group">
+            <label for="thread_count" class="form-label">Download Threads</label>
+            <input type="number" class="form-control" id="thread_count" 
+                    min="1" max="20" placeholder="10">
+        </div>
+        
+    </div>
+
+    <button type="submit" class="btn btn-primary">SAVE CONFIGURATION</button>
+</form>
+
+<div id="toastContainer" class="toast-container"></div>
+
+<script>
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    
+    // Remove toast after animation completes
+    setTimeout(() => {
+        toast.remove();
+    }, 3500);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Load current settings
+    fetch('/api/settings')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('filename_pattern').value = data.filename_pattern || '';
+            document.getElementById('filename_separator').value = data.filename_separator || '';
+            document.getElementById('write_metadata').value = data.write_metadata || '0';
+            document.getElementById('thread_count').value = data.thread_count || '';
+            document.getElementById('output_dir').value = data.output_dir || '';
+            document.getElementById('auth_token').value = data.auth_token || '';
+        });
+    
+    // Handle form submission
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const settings = {
+            filename_pattern: document.getElementById('filename_pattern').value,
+            filename_separator: document.getElementById('filename_separator').value,
+            write_metadata: document.getElementById('write_metadata').value,
+            thread_count: parseInt(document.getElementById('thread_count').value),
+            output_dir: document.getElementById('output_dir').value,
+            auth_token: document.getElementById('auth_token').value
+        };
+        
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast('Settings saved successfully!', 'success');
+            } else {
+                showToast('Error saving settings: ' + data.error, 'error');
+            }
+        })
+        .catch(err => {
+            showToast('Network error while saving settings.', 'error');
+        });
+    });
+});
+</script>
+{% endblock %}
