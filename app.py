@@ -37,6 +37,7 @@ app = Flask(__name__)
 progress_queue = Queue()
 download_state = DownloadState()
 cancel_event = threading.Event()
+download_lock = threading.Lock()  # Prevent concurrent download triggers
 
 @app.route('/')
 def index():
@@ -48,6 +49,9 @@ def get_status():
 
 @app.route('/download', methods=['POST'])
 def start_download():
+    if not download_lock.acquire(blocking=False):
+        return jsonify({"status": "error", "message": "A download is already in progress"}), 409
+
     data = request.json
     username = data.get('username')
     post_type = data.get('type', 'videos')
@@ -67,6 +71,8 @@ def start_download():
             error = f"Error in download thread: {str(e)}"
             logger.error(error)
             progress_queue.put(error)
+        finally:
+            download_lock.release()
     
     threading.Thread(target=download_thread).start()
     return jsonify({"status": "started"})
@@ -88,7 +94,7 @@ def progress():
                     break
                 yield f"data: {progress}\n\n"
             except Empty:
-                continue
+                yield ": heartbeat\n\n"  # SSE comment keeps proxy connections alive
             except Exception as e:
                 logger.error(f"Error in progress stream: {e}")
                 break
@@ -160,10 +166,16 @@ def api_settings():
     # GET request - return current settings
     try:
         config.read(config_path)
+        auth_token = os.getenv('AUTH_TOKEN', config.get('Settings', 'auth_token', fallback=''))
+        # Mask token for display: show first 4 + last 4 chars only
+        if len(auth_token) > 12:
+            masked_token = auth_token[:4] + '*' * (len(auth_token) - 8) + auth_token[-4:]
+        else:
+            masked_token = '****' if auth_token else ''
         settings_data = {
             'filename_pattern': os.getenv('FILENAME_PATTERN', config.get('Settings', 'filename_pattern', fallback='{creator}_{date}_{title}')),
             'filename_separator': os.getenv('FILENAME_SEPARATOR', config.get('Settings', 'filename_separator', fallback='_')),
-            'auth_token': os.getenv('AUTH_TOKEN', config.get('Settings', 'auth_token', fallback='')),
+            'auth_token': masked_token,
             'thread_count': int(os.getenv('THREAD_COUNT', config.get('Settings', 'thread_count', fallback='10'))),
             'output_dir': os.getenv('DOWNLOADS_DIR', config.get('Settings', 'output_dir', fallback='./downloads')),
             'write_metadata': int(os.getenv('WRITE_METADATA', config.get('Settings', 'write_metadata', fallback='0')))

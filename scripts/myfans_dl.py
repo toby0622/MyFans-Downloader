@@ -1,7 +1,7 @@
 import datetime
 import os
 import pathlib
-import sys
+import shutil
 import time
 import json
 import uuid
@@ -9,7 +9,6 @@ from queue import Queue, Empty
 import subprocess
 import configparser
 from tqdm import tqdm
-from scripts.filename_utils import *
 import concurrent.futures
 import threading
 import m3u8
@@ -21,8 +20,10 @@ import requests
 from requests import Session
 import re
 
-# Get log file path from environment or use default
-log_file = os.getenv('LOG_FILE', 'myfans_downloader.log')
+# Log file path: use config/ directory to match app.py
+log_dir = os.getenv('CONFIG_DIR', 'config')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.getenv('LOG_FILE', os.path.join(log_dir, 'myfans_downloader.log'))
 
 # Create logger
 logger = logging.getLogger('myfans_downloader')
@@ -30,7 +31,7 @@ logger.setLevel(logging.INFO)
 
 # Create handlers
 console_handler = logging.StreamHandler()
-file_handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5)  # 10MB file size
+file_handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5)  # 10MB per file
 
 # Create formatters
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -44,23 +45,12 @@ logger.addHandler(file_handler)
 # Prevent log propagation to avoid duplicate logs
 logger.propagate = False
 
-# Am Anfang der Datei nach den Imports hinzufügen:
-log_lock = threading.Lock()
 
-# Neue Hilfsfunktion für Thread-sicheres Logging
-def thread_safe_log(level, message, progress_queue=None):
-    with log_lock:
-        if level == 'info':
-            logger.info(message)
-        elif level == 'error':
-            logger.error(message)
-        elif level == 'warning':
-            logger.warning(message)
-        elif level == 'debug':
-            logger.debug(message)
-        
-        if progress_queue:
-            progress_queue.put(message)
+def log_and_notify(level, message, progress_queue=None):
+    """Log a message and optionally push it to the progress queue for the UI."""
+    getattr(logger, level)(message)
+    if progress_queue:
+        progress_queue.put(message)
 
 def get_headers():
     config_file_path = os.path.join(os.getenv('CONFIG_DIR', 'config'), 'config.ini')
@@ -277,7 +267,7 @@ def DL_File(m3u8_url_download, output_file, input_post_id, chunk_size=1024*1024,
                                 # Log progress occasionally
                                 if processed_count % 50 == 0 or processed_count == total_segments:
                                     success_rate = len([f for f in segment_files if f]) / processed_count * 100
-                                    thread_safe_log('info', f"Progress: {processed_count}/{total_segments} segments ({success_rate:.1f}% success)", progress_queue)
+                                    log_and_notify('info', f"Progress: {processed_count}/{total_segments} segments ({success_rate:.1f}% success)", progress_queue)
                             except Exception as e:
                                 logger.error(f"Error processing segment result: {str(e)}")
                 
@@ -444,7 +434,7 @@ def process_post_id(input_post_id, session, headers, selected_resolution, output
             return False
 
         # Validate URL before attempting download
-        if not validate_video_url(video_url, headers):
+        if not validate_video_url(video_url, headers, session=session):
             logger.error(f"Video URL validation failed for post {input_post_id}")
             return False
 
@@ -580,9 +570,8 @@ def download_single_file(session, post_id, selected_resolution, output_dir, file
 def check_disk_space(path, required_bytes):
     """Check if there's enough disk space available"""
     try:
-        stat = os.statvfs(path)
-        free_bytes = stat.f_frsize * stat.f_bavail
-        return free_bytes >= required_bytes
+        total, used, free = shutil.disk_usage(path)
+        return free >= required_bytes
     except Exception as e:
         logger.error(f"Failed to check disk space: {e}")
         return False
@@ -597,6 +586,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
             progress_queue.put(message)
             
             session = requests.Session()
+            headers = get_headers()
             config_file_path = os.path.join(os.getenv('CONFIG_DIR', 'config'), 'config.ini')
             
             config = configparser.ConfigParser()
@@ -608,7 +598,6 @@ def start_download(username, post_type, download_type, progress_queue, download_
             if post_type == 'videos':
                 download_single_file(session, post_id, resolution, output_dir, filename_config)
             else:  # images
-                headers = get_headers()
                 handle_image_download(post_id, session, headers, output_dir, filename_config, progress_queue)
             progress_queue.put("DONE")
             return
@@ -618,6 +607,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
         progress_queue.put(message)
         
         session = requests.Session()
+        headers = get_headers()  # Cache headers once for the entire download session
         config_file_path = os.path.join(os.getenv('CONFIG_DIR', 'config'), 'config.ini')
         
         if not os.path.isfile(config_file_path):
@@ -638,7 +628,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
         logger.info(message)
         progress_queue.put(message)
 
-        response = session.get(user_info_url, headers=get_headers())
+        response = session.get(user_info_url, headers=headers)
         response.raise_for_status()
         user_data = response.json()
 
@@ -685,7 +675,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
                     if download_state:
                         download_state.update_progress('FETCHING', page)
                     
-                    response = session.get(base_url + str(page), headers=get_headers())
+                    response = session.get(base_url + str(page), headers=headers)
                     response.raise_for_status()
                     json_data = response.json()
                     
@@ -734,7 +724,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
                         if download_state:
                             download_state.update_progress('FETCHING', page)
                             
-                        response = session.get(back_plan_url + str(page), headers=get_headers())
+                        response = session.get(back_plan_url + str(page), headers=headers)
                         response.raise_for_status()
                         json_data = response.json()
                         
@@ -816,7 +806,7 @@ def start_download(username, post_type, download_type, progress_queue, download_
                     if download_state:
                         download_state.update_progress('FETCHING', page)
                     
-                    response = session.get(base_url + str(page), headers=get_headers())
+                    response = session.get(base_url + str(page), headers=headers)
                     response.raise_for_status()
                     json_data = response.json()
                     
@@ -945,77 +935,6 @@ def download_images_concurrently(session, post_ids, output_dir, filename_config,
     if progress_queue:
         progress_queue.put("Image download process completed")
 
-class DownloadState:
-    def __init__(self, state_dir="config"):
-        self.state_file = os.path.join(state_dir, "download_state.json")
-        self.state = self._load_state()
-        self._cleanup_incomplete()
-
-    def _cleanup_incomplete(self):
-        """Check for incomplete downloads and mark them for retry"""
-        downloads_dir = os.getenv('DOWNLOADS_DIR', './downloads')
-        for post_id, info in self.state["downloads"].items():
-            if info["status"] == "in_progress":
-                # Check if the download was interrupted
-                temp_folder = os.path.join(downloads_dir, f"{post_id}_parts")
-                if os.path.exists(temp_folder):
-                    self.state["downloads"][post_id]["status"] = "incomplete"
-        self.save_state()
-
-    def _load_state(self):
-        """Load download state from JSON file"""
-        try:
-            if os.path.exists(self.state_file):
-                with open(self.state_file, 'r') as f:
-                    return json.loads(f.read())
-            return {"completed_files": [], "downloads": {}}
-        except Exception as e:
-            logger.error(f"Error loading state file: {e}")
-            return {"completed_files": [], "downloads": {}}
-
-    def save_state(self):
-        """Save current state to JSON file"""
-        try:
-            with open(self.state_file, 'w') as f:
-                json.dump(self.state, f)
-        except Exception as e:
-            logger.error(f"Error saving state file: {e}")
-
-    def add_download(self, post_id, segments_total=0):
-        """Add new download to state"""
-        self.state["downloads"][str(post_id)] = {
-            "status": "in_progress",
-            "segments_total": segments_total,
-            "segments_downloaded": 0
-        }
-        self.save_state()
-
-    def update_progress(self, post_id, segments_done):
-        """Update download progress"""
-        if str(post_id) in self.state["downloads"]:
-            self.state["downloads"][str(post_id)]["segments_downloaded"] = segments_done
-            self.save_state()
-
-    def mark_completed(self, post_id):
-        """Mark download as completed"""
-        post_id = str(post_id)
-        if post_id not in self.state["completed_files"]:
-            self.state["completed_files"].append(post_id)
-        if post_id in self.state["downloads"]:
-            del self.state["downloads"][post_id]
-        self.save_state()
-
-    def mark_failed(self, post_id, error):
-        """Mark download as failed"""
-        self.state["downloads"][str(post_id)] = {
-            "status": "failed",
-            "error": error
-        }
-        self.save_state()
-
-    def is_completed(self, post_id):
-        """Check if download is already completed"""
-        return str(post_id) in self.state["completed_files"]
 
 def get_available_resolutions(main_videos):
     """Get all available resolutions from video data"""
@@ -1138,13 +1057,13 @@ def handle_image_download(post_id, session, headers, output_dir, filename_config
             progress_queue.put(error)
         return False
 
-def validate_video_url(url, headers):
+def validate_video_url(url, headers, session=None):
     """Validate video URL is accessible"""
     try:
-        session = requests.Session()
-        session.headers.update(headers)  # Use session with headers
+        if session is None:
+            session = requests.Session()
         
-        response = session.head(url, allow_redirects=True, timeout=10)
+        response = session.head(url, headers=headers, allow_redirects=True, timeout=10)
         
         if response.status_code != 200:
             logger.error(f"URL validation failed with status code {response.status_code}")
@@ -1222,17 +1141,17 @@ def generate_filename(post: Dict, filename_config: Dict, output_dir: str, ext:st
     username = post.get('user', {}).get('username', 'unknown')
     post_id = post.get('id', 'unknown')
     
-    # Debug-Ausgabe der verfügbaren Datums-Felder
+    # Debug: log available date fields
     date_fields = [field for field in post.keys() if 'date' in field.lower() or 'time' in field.lower() or 'at' in field.lower()]
     logger.debug(f"Available date fields for post {post_id}: {date_fields}")
     
-    # Explizite Prüfung jedes möglichen Datumsfeldes
+    # Try each possible date field explicitly
     post_date = None
     if date_obj := get_post_date(post):
         post_date = date_obj.strftime('%Y-%m-%d')
         logger.info(f"Using date: {post_date} for post {post_id}")
 
-    # Fallback auf "unknown_date" wenn gar nichts funktioniert
+    # Fallback to "unknown_date" if no date field is found
     if not post_date:
         post_date = "unknown_date"
         logger.warning(f"No date found for post {post_id}, dumping post data for debug")
@@ -1259,7 +1178,7 @@ def generate_filename(post: Dict, filename_config: Dict, output_dir: str, ext:st
                      .replace('{title}', title) \
                      .replace('{id}', post_id)
     
-    # Entferne doppelte post_id im Dateinamen (wenn vorhanden)
+    # Remove duplicate post_id in filename (if present)
     base_name = os.path.splitext(filename)[0]
     if base_name.endswith(f"_{post_id}") and f"_{post_id}" in base_name[:-len(post_id)-1]:
         filename = base_name[:-len(post_id)-1] + ext
@@ -1290,24 +1209,24 @@ def generate_metadata(post: Dict, filename: str, output_dir: str, ext: str = 'mp
         post_date = date_obj.strftime('%Y-%m-%d %H:%M:%S')
 
     metadata_path = os.path.join(output_dir, f"{filename}.json")
-    with open(metadata_path, "w") as f:
-        f.write(f'''{{
-  "service": "myfans",
-  "category": "myfans",
-  "subcategory": "myfans",
-  "id": "{post_id}",
-  "is_preview": false,
-  "user": "{user_id}",
-  "username": "{username}",
-  "content": "{post_body}",
-  "post_id": "{post_id}",
-  "type": "attachment",
-  "extension": "{ext}",
-  "date": "{post_date}",
-  "post_date": "{post_date}",
-  "media_date": "{post_date}"
-}}
-''')
+    metadata = {
+        "service": "myfans",
+        "category": "myfans",
+        "subcategory": "myfans",
+        "id": str(post_id),
+        "is_preview": False,
+        "user": str(user_id),
+        "username": username,
+        "content": post_body,
+        "post_id": str(post_id),
+        "type": "attachment",
+        "extension": ext,
+        "date": post_date,
+        "post_date": post_date,
+        "media_date": post_date
+    }
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
     update_file_date(post, metadata_path)
 
 
@@ -1392,175 +1311,3 @@ def validate_filename_config(filename_config: Dict) -> bool:
             return False
             
     return True
-
-def main():
-    session = requests.Session()
-    config_file_path = 'config.ini'
-
-    if os.path.isfile(config_file_path):
-        config = configparser.ConfigParser()
-        config.read(config_file_path)
-        try:
-            output_dir = config.get('Settings', 'output_dir')
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            print("Error: 'output_dir' not found in [Settings] section of config.ini.")
-            sys.exit(1)
-
-        try:
-            max_workers = config.getint('Threads', 'threads')
-            if max_workers < 1:
-                print("Error: 'threads' must be a positive integer. Using default value 10.")
-                max_workers = 10
-        except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
-            print("Warning: 'threads' not found or invalid in [Threads] section. Using default value 10.")
-            max_workers = 10
-
-    else:
-        output_dir = input("Enter the output directory: ")
-        if output_dir == '0':
-            return
-        config = configparser.ConfigParser()
-        config['Settings'] = {'output_dir': output_dir}
-        config['Filename'] = {
-            'pattern': '{creator}_{date}',
-            'separator': '_',
-            'numbers': '1234',
-            'letters': 'FudgeRK'
-        }
-        config['Threads'] = {'threads': '10'}
-        with open(config_file_path, 'w') as configfile:
-            config.write(configfile)
-        print(f"Created default config.ini with pattern '{config['Filename']['pattern']}' and threads=10.")
-        max_workers = 10
-
-    filename_config = read_filename_config(config)
-    validate_filename_config(filename_config)
-
-    while True:
-        name_creator = input("Enter a creator's username (without @) or type '0' to exit: ")
-        if name_creator.lower() == '0':
-            sys.exit()
-        new_base_url = f"https://api.myfans.jp/api/v2/users/show_by_username?username={name_creator}"
-        headers = get_headers()
-        try:
-            response = requests.get(new_base_url, headers=headers)
-            response.raise_for_status()
-            new_json_data = response.json()
-            user_id = new_json_data.get("id")
-            if user_id:
-                break
-            else:
-                print("Failed to retrieve user ID from the API endpoint. Please try again.")
-        except requests.RequestException as e:
-            print(f"An error occurred while connecting to the API: {e}")
-
-    print("Select an option:")
-    print("1. Download all video posts")
-    print("2. Download a single video post by ID")
-    choice = input("Enter your choice (1/2): ")
-
-    if choice == '1':
-        # First get back number plan info
-        user_info_url = f"https://api.myfans.jp/api/v2/users/show_by_username?username={name_creator}"  # Changed URL format
-        print("Fetching user info and plans...")
-        try:
-            response = session.get(user_info_url, headers=headers)
-            response.raise_for_status()
-            user_data = response.json()
-            back_number_plan = user_data.get('current_back_number_plan')
-            user_id = user_data.get('id')  # Get user_id from the response
-            
-            if not user_id:
-                print("Failed to retrieve user ID. Please check the username and try again.")
-                return
-            
-            # Fetch regular posts
-            base_url = f"https://api.myfans.jp/api/v2/users/{user_id}/posts?page="
-            print("Fetching regular posts...")
-            video_posts = []
-            page = 1
-            
-            with tqdm(desc="Fetching regular posts") as pbar:
-                while True:
-                    try:
-                        response = requests.get(base_url + str(page), headers=headers)
-                        response.raise_for_status()
-                        json_data = response.json()
-                        
-                        if not json_data.get("data"):
-                            break
-                            
-                        for post in json_data["data"]:
-                            if post.get("kind") == "video":
-                                video_posts.append(post)
-                        
-                        page += 1
-                        pbar.update(1)
-                        
-                    except requests.RequestException as e:
-                        print(f"\nError fetching page {page}: {e}")
-                        break
-            
-            # Fetch back number plan posts if available
-            if back_number_plan:
-                print("\nFetching back number plan posts...")
-                back_plan_url = f"https://api.myfans.jp/api/v2/users/{user_id}/back_number_posts?page="
-                page = 1
-                
-                with tqdm(desc="Fetching back plan posts") as pbar:
-                    while True:
-                        try:
-                            response = requests.get(back_plan_url + str(page), headers=headers)
-                            response.raise_for_status()
-                            json_data = response.json()
-                            
-                            if not json_data.get("data"):
-                                break
-                                
-                            for post in json_data["data"]:
-                                if post.get("kind") == "video":
-                                    video_posts.append(post)
-                            
-                            page += 1
-                            pbar.update(1)
-                            
-                        except requests.RequestException as e:
-                            print(f"\nError fetching back plan page {page}: {e}")
-                            break
-            
-            print(f"\nTotal video posts found: {len(video_posts)}")
-
-            print("Select which posts to download:")
-            print("1. Free posts only")
-            print("2. Subscribe posts only")
-            print("3. All posts")
-            save_choice = input("Enter your choice (1/2/3): ").strip()
-
-            if save_choice == "1":
-                post_ids = [post.get("id") for post in video_posts if post.get("free")]
-            elif save_choice == "2":
-                post_ids = [post.get("id") for post in video_posts if not post.get("free")]
-            else:
-                post_ids = [post.get("id") for post in video_posts]
-
-            if not post_ids:
-                print("No posts match the selected criteria.")
-                return
-
-            selected_resolution = 'best'
-            download_videos_concurrently(session, post_ids, selected_resolution, output_dir, filename_config)
-
-        except requests.RequestException as e:
-            print(f"An error occurred while fetching posts: {e}")
-
-    elif choice == '2':
-        post_id = input("Enter the post ID to download: ")
-        selected_resolution = 'best'
-        download_single_file(session, post_id, selected_resolution, output_dir, filename_config)
-
-    else:
-        print("Invalid choice.")
-        return
-
-if __name__ == "__main__":
-    main()
