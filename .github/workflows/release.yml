@@ -53,6 +53,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          $versionMatches = @(Select-String `
+            -Path ".\pyproject.toml" `
+            -Pattern '^version = "([^"]+)"$'
+          )
+          if ($versionMatches.Count -ne 1) {
+            throw "Could not determine a unique release version from pyproject.toml."
+          }
+          $version = $versionMatches[0].Matches[0].Groups[1].Value
           $assets = @(
             ".\dist\MyFansDownloader.exe",
             ".\dist\MyFansDownloader.exe.sha256",
@@ -60,5 +68,5 @@ jobs:
           )
           gh release create $tag $assets `
             --verify-tag `
-            --title "MyFans Downloader $tag" `
+            --title "v$version" `
             --generate-notes

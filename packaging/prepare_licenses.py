@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = (ROOT / ".build-tools" / "licenses").resolve()
 REQUIRED_DISTRIBUTIONS = {"m3u8", "pywebview", "requests", "tqdm", "urllib3"}
 LICENSE_NAMES = ("license", "licence", "copying", "notice")
+PYTHON_LICENSE_NAMES = ("LICENSE_PYTHON.txt", "LICENSE.txt", "LICENSE")
 
 
 def _safe_name(value: str) -> str:
@@ -26,6 +27,16 @@ def _license_files(distribution) -> list[Path]:
             if source.is_file():
                 files.append(source)
     return files
+
+
+def _find_python_license(base_prefix: Path | None = None) -> Path:
+    python_root = Path(base_prefix or sys.base_prefix).resolve()
+    candidates = [python_root / name for name in PYTHON_LICENSE_NAMES]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    checked = ", ".join(str(candidate) for candidate in candidates)
+    raise FileNotFoundError(f"Python license file is missing; checked: {checked}")
 
 
 def main() -> None:
@@ -80,9 +91,7 @@ def main() -> None:
             + ", ".join(sorted(missing))
         )
 
-    python_license = Path(sys.base_prefix) / "LICENSE_PYTHON.txt"
-    if not python_license.is_file():
-        raise FileNotFoundError(f"Python license file is missing: {python_license}")
+    python_license = _find_python_license()
     shutil.copy2(python_license, OUTPUT_DIR / "PYTHON_LICENSE.txt")
     copied_count += 1
 
