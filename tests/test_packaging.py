@@ -27,7 +27,7 @@ class LicenseCollectorTests(unittest.TestCase):
 
             result = LICENSE_COLLECTOR._find_python_license(Path(temp_dir))
 
-            self.assertEqual(result, license_file)
+            self.assertTrue(result.samefile(license_file))
 
     def test_missing_python_license_lists_checked_candidates(self):
         with (
