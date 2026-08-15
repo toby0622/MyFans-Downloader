@@ -31,6 +31,7 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!MyFansDownloader.spec
 
 # Installer logs
 pip-log.txt
@@ -151,6 +152,8 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-build/
+.build-tools/
 env/
 venv/
 ENV/
@@ -218,10 +221,17 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Application Specific
-config.ini
-config/download_state.json
+.runtime/
 *.log
 downloads/
 
-# FFmpeg
+# Never commit private data from pre-desktop releases.
+config.ini
+config/
 ffmpeg/
+
+# Build artifacts and isolated tooling
+.build-tools/
+.venv-build/
+build/
+dist/

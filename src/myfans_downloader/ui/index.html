@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>MYFANS DOWNLOADER</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="css/style.css">
+    <script src="app.js" defer></script>
+</head>
+<body>
+    <div class="layout-wrapper">
+        <aside class="sidebar">
+            <div class="brand">
+                <img class="brand-mark" src="favicon.svg" alt="" aria-hidden="true">
+                <h1>MYFANS<br>DOWNLOADER</h1>
+            </div>
+            <nav class="nav-menu" aria-label="Application sections">
+                <button type="button" class="nav-link active" data-page="contentPage">CONTENT</button>
+                <button type="button" class="nav-link" data-page="settingsPage">SETTINGS</button>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <section id="contentPage" class="page active">
+                <h2 class="page-title">DOWNLOAD MANAGER</h2>
+                <div class="page-subtitle">CONTENT ACQUISITION INTERFACE</div>
+
+                <div class="content-layout">
+                    <div class="content-left">
+                        <form id="downloadForm">
+                            <div class="form-grid">
+                                <div class="form-column">
+                                    <div class="form-group">
+                                        <label for="type" class="form-label">Content Type</label>
+                                        <select id="type" class="form-select">
+                                            <option value="videos">Videos</option>
+                                            <option value="images">Images</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="downloadType" class="form-label">Download Mode</label>
+                                        <select id="downloadType" class="form-select">
+                                            <option value="bulk">Download All Content</option>
+                                            <option value="single">Download Single Item</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-column" id="bulkDownload">
+                                    <div class="form-group">
+                                        <label for="username" class="form-label">Username</label>
+                                        <input type="text" class="form-control" id="username" placeholder="Enter username (without @)" maxlength="100" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="downloadFilter" class="form-label">Content Filter</label>
+                                        <select id="downloadFilter" class="form-select">
+                                            <option value="all">All Posts</option>
+                                            <option value="free">Free Posts Only</option>
+                                            <option value="subscribed">Subscribed Posts Only</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="resolutionGroup">
+                                        <label for="resolution" class="form-label">Video Quality</label>
+                                        <select id="resolution" class="form-select">
+                                            <option value="best">Best Available</option>
+                                            <option value="uhd">2160p (4K)</option>
+                                            <option value="fhd">1080p (Full HD)</option>
+                                            <option value="hd">720p (HD)</option>
+                                            <option value="sd">480p (SD)</option>
+                                            <option value="ld">360p (Low)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-column hidden" id="singleDownload">
+                                    <div class="form-group">
+                                        <label for="postId" class="form-label">Post ID</label>
+                                        <input type="text" class="form-control" id="postId" placeholder="Enter post ID" maxlength="128">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="button-row">
+                                <button type="submit" id="downloadBtn" class="btn btn-primary">DOWNLOAD</button>
+                                <button type="button" id="stopBtn" class="btn btn-danger" disabled>STOP</button>
+                                <button type="button" id="openDownloadsBtn" class="btn btn-secondary">OPEN FOLDER</button>
+                            </div>
+                        </form>
+
+                        <div id="progress" class="progress-log" role="log" aria-live="polite"></div>
+                    </div>
+
+                    <div class="content-right">
+                        <div class="queue-section">
+                            <div class="queue-title">FETCH PROGRESS</div>
+                            <div id="fetchProgressList" class="queue-list compact"></div>
+                        </div>
+                        <div class="queue-section grow">
+                            <div class="queue-title">ACTIVE QUEUE</div>
+                            <div id="queueList" class="queue-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="settingsPage" class="page">
+                <h2 class="page-title">SYSTEM SETTINGS</h2>
+                <div class="page-subtitle">LOCAL APPLICATION CONFIGURATION</div>
+                <form id="settingsForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="filenamePattern" class="form-label">Filename Pattern</label>
+                            <input type="text" class="form-control" id="filenamePattern" placeholder="{creator}_{date}_{title}_{id}" maxlength="180" required>
+                            <div class="form-text">Available: {creator}, {date}, {title}, {id}. The ID is appended when omitted.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="authToken" class="form-label">Auth Token</label>
+                            <input type="password" class="form-control" id="authToken" placeholder="Enter your MyFans token" autocomplete="off">
+                            <div id="tokenStatus" class="form-text">No token configured</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="filenameSeparator" class="form-label">Filename Separator</label>
+                            <input type="text" class="form-control" id="filenameSeparator" placeholder="_" maxlength="8">
+                        </div>
+                        <div class="form-group">
+                            <label for="writeMetadata" class="form-label">Write JSON Metadata</label>
+                            <select class="form-select" id="writeMetadata">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="outputDir" class="form-label">Download Directory</label>
+                            <div class="input-action-row">
+                                <input type="text" class="form-control" id="outputDir" required>
+                                <button type="button" id="browseOutputBtn" class="btn btn-secondary small">BROWSE</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="threadCount" class="form-label">Segment / Image Threads</label>
+                            <input type="number" class="form-control" id="threadCount" min="1" max="32" required>
+                            <div class="form-text">Video posts remain sequential; segments and images use this limit.</div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">SAVE CONFIGURATION</button>
+                </form>
+                <div class="local-data-note">
+                    <span>APPLICATION DATA</span>
+                    <code id="dataDir">Loading...</code>
+                </div>
+            </section>
+        </main>
+    </div>
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+</body>
+</html>
