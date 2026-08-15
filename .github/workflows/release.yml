@@ -33,9 +33,14 @@ jobs:
       - name: Run packaged self-test
         shell: pwsh
         run: |
-          .\dist\MyFansDownloader.exe --self-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "Packaged self-test failed with exit code $LASTEXITCODE."
+          $process = Start-Process `
+            -FilePath ".\dist\MyFansDownloader.exe" `
+            -ArgumentList "--self-test" `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged self-test failed with exit code $($process.ExitCode)."
           }
 
       - name: Verify checksum
